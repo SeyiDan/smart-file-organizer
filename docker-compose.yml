@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  smart-file-organizer:
+    build: .
+    container_name: smart-file-organizer
+    environment:
+      - PYTHONPATH=/app
+      - LOG_LEVEL=INFO
+    volumes:
+      # Mount your source directory (files to organize)
+      - ./input_files:/app/input_files:ro
+      # Mount output directory (where organized files will go)
+      - ./Organized_Files:/app/Organized_Files
+      # Mount logs directory
+      - ./logs:/app/logs
+      # Mount config file
+      - ./config.yaml:/app/config.yaml:ro
+    working_dir: /app
+    # Override the default command to organize files
+    command: >
+      python file_organizer.py 
+      --source /app/input_files 
+      --destination /app/Organized_Files 
+      --verbose
+    restart: "no"
+    
+  # Demo service with dry-run
+  smart-file-organizer-demo:
+    build: .
+    container_name: smart-file-organizer-demo
+    environment:
+      - PYTHONPATH=/app
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ./Smart_Organized_Demo:/app/input_files:ro
+      - ./demo_output:/app/Organized_Files
+      - ./logs:/app/logs
+      - ./config.yaml:/app/config.yaml:ro
+    working_dir: /app
+    command: >
+      python file_organizer.py 
+      --source /app/input_files 
+      --destination /app/Organized_Files 
+      --dry-run 
+      --verbose
+    restart: "no"
+    profiles: ["demo"]

@@ -1,0 +1,55 @@
+# Git files
+.git/
+.gitignore
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs (will be mounted as volume)
+logs/
+*.log
+
+# Temporary files
+temp/
+tmp/
+backups/
+*.bak
+
+# Organized output (will be mounted as volume)
+Organized_Files/
+Smart_Organized_*/
+organized_output/
+demo_output/
+
+# Undo files
+undo_info_*.json
+
+# Environment files
+.env
+
+# Documentation
+*.md
+docs/
+
+# Test files that shouldn't be in production
+test_scenarios.py
+demo_smart_organizer.py

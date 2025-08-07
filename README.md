@@ -60,9 +60,32 @@ Organized_Files/
 
 ## 🛠️ Installation
 
+### Option 1: Docker (Recommended)
+
 1. Clone the repository:
 ```bash
-git clone https://github.com/your-username/smart-file-organizer.git
+git clone https://github.com/SeyiDan/smart-file-organizer.git
+cd smart-file-organizer
+```
+
+2. Build and run with Docker:
+```bash
+# Put your files to organize in the 'input_files' directory
+mkdir input_files
+cp -r ~/Downloads/* input_files/
+
+# Run the organizer
+docker-compose up smart-file-organizer
+
+# Or run a demo with the included sample files
+docker-compose --profile demo up smart-file-organizer-demo
+```
+
+### Option 2: Local Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/SeyiDan/smart-file-organizer.git
 cd smart-file-organizer
 ```
 
@@ -79,6 +102,23 @@ nltk.download('stopwords')
 ```
 
 ## 🎮 Usage
+
+### Docker Usage
+
+```bash
+# Basic organization with Docker
+docker-compose up smart-file-organizer
+
+# Run demo with sample files
+docker-compose --profile demo up smart-file-organizer-demo
+
+# Custom organization
+docker run --rm \
+  -v $(pwd)/your_files:/app/input_files:ro \
+  -v $(pwd)/organized_output:/app/Organized_Files \
+  smart-file-organizer \
+  python file_organizer.py --source /app/input_files --destination /app/Organized_Files --verbose
+```
 
 ### Command Line Interface
 
