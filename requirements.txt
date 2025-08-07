@@ -1,0 +1,48 @@
+# Core dependencies for smart semantic organization
+python-dotenv>=1.0.0
+pyyaml>=6.0.1
+aiohttp>=3.8.5
+typing-extensions>=4.7.1
+
+# AI and ML libraries for semantic analysis
+numpy>=1.21.0
+scikit-learn>=1.0.0
+# NVIDIA NIM integration (optional)
+# nimblygpt>=0.1.0
+# openai>=1.0.0
+
+# File content analysis and metadata extraction
+pillow>=9.0.0           # Image processing and EXIF data
+mutagen>=1.46.0         # Audio metadata extraction  
+pypdf2>=3.0.0          # PDF text extraction
+python-docx>=1.0.0     # Word document processing
+openpyxl>=3.0.9        # Excel file handling
+python-magic>=0.4.27   # File type detection
+
+# Text processing and similarity analysis
+nltk>=3.8              # Natural language processing
+regex>=2022.1.18       # Advanced regex patterns
+
+# Utilities and user interface
+tqdm>=4.65.0           # Progress bars
+click>=8.0.0           # CLI framework  
+colorama>=0.4.4        # Colored terminal output
+colorlog>=6.7.0        # Colored logging
+rich>=12.0.0           # Rich terminal output formatting
+
+# File system monitoring (optional)
+watchdog>=2.1.0
+
+# GUI framework (optional - for future GUI implementation)
+# customtkinter>=5.0.0
+
+# Testing dependencies (optional)
+# pytest>=7.0.0
+# pytest-cov>=4.0.0
+# pytest-asyncio>=0.20.0
+
+# Development tools (optional)  
+# black>=22.0.0
+# flake8>=5.0.0
+# mypy>=0.991
+# isort>=5.10.0 

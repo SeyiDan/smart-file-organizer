@@ -1,0 +1,161 @@
+# AI-Powered File Organizer Configuration
+
+# NVIDIA NIM Configuration
+nvidia_nim:
+  api_key: "${NVIDIA_API_KEY}"  # Set via environment variable
+  base_url: "https://integrate.api.nvidia.com/v1"
+  models:
+    text_analysis: "meta/llama3-70b-instruct"
+    image_analysis: "nvidia/nv-embed-v1"
+    embeddings: "nvidia/nv-embed-v1"
+    reranker: "nvidia/nv-rerank-qa-mistral-4b"
+
+# File Organization Settings
+organization:
+  # Maximum depth of folder hierarchy
+  max_depth: 4
+  
+  # Minimum files per category to create subfolder
+  min_files_for_subfolder: 3
+  
+  # File size limits (in MB)
+  max_file_size: 1000
+  min_file_size: 0.000001  # 1 byte
+  
+  # Duplicate handling
+  duplicate_strategy: "rename"  # Options: rename, skip, replace, prompt
+  
+  # Backup original structure
+  create_backup: true
+  backup_location: "./backups"
+
+# Supported File Types
+file_types:
+  documents:
+    extensions: [".pdf", ".doc", ".docx", ".txt", ".md", ".rtf", ".odt"]
+    categories:
+      - "Academic Papers"
+      - "Business Documents"
+      - "Personal Documents"
+      - "Manuals & Guides"
+      - "Reports"
+      
+  images:
+    extensions: [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".svg", ".webp"]
+    categories:
+      - "Photos"
+      - "Screenshots"
+      - "Graphics & Design"
+      - "Illustrations"
+      - "Icons"
+      
+  audio:
+    extensions: [".mp3", ".wav", ".flac", ".m4a", ".ogg", ".wma", ".aac"]
+    categories:
+      - "Music"
+      - "Podcasts"
+      - "Audio Books"
+      - "Sound Effects"
+      - "Voice Recordings"
+      
+  video:
+    extensions: [".mp4", ".avi", ".mov", ".mkv", ".flv", ".wmv", ".webm"]
+    categories:
+      - "Movies"
+      - "TV Shows"
+      - "Educational"
+      - "Personal Videos"
+      - "Tutorials"
+      
+  spreadsheets:
+    extensions: [".xls", ".xlsx", ".csv", ".ods"]
+    categories:
+      - "Financial"
+      - "Data Analysis"
+      - "Inventory"
+      - "Reports"
+      
+  presentations:
+    extensions: [".ppt", ".pptx", ".odp"]
+    categories:
+      - "Business"
+      - "Educational"
+      - "Personal"
+      
+  archives:
+    extensions: [".zip", ".rar", ".7z", ".tar", ".gz"]
+    categories:
+      - "Software"
+      - "Backups"
+      - "Downloads"
+
+# AI Analysis Settings
+ai_analysis:
+  # Enable content analysis for different file types
+  analyze_text_content: true
+  analyze_image_content: true
+  analyze_audio_metadata: true
+  analyze_video_metadata: true
+  
+  # Confidence thresholds
+  classification_confidence: 0.7
+  similarity_threshold: 0.8
+  
+  # Batch processing
+  batch_size: 10
+  max_concurrent_requests: 5
+  
+  # Content analysis depth
+  extract_topics: true
+  extract_entities: true
+  extract_sentiment: true
+  detect_language: true
+
+# Logging Configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  file_path: "./logs/file_organizer.log"
+  max_file_size: 10  # MB
+  backup_count: 5
+  console_output: true
+
+# Performance Settings
+performance:
+  # Threading
+  max_workers: 4
+  
+  # Memory limits
+  max_memory_usage: 2048  # MB
+  
+  # Progress tracking
+  show_progress_bar: true
+  
+  # Caching
+  enable_caching: true
+  cache_size: 1000  # Number of analysis results to cache
+
+# GUI Settings
+gui:
+  theme: "dark"  # Options: dark, light, system
+  window_size:
+    width: 1200
+    height: 800
+  default_source_path: "~/Downloads"
+  auto_save_settings: true
+
+# Advanced Features
+advanced:
+  # Learning from user corrections
+  enable_learning: true
+  learning_feedback_weight: 0.3
+  
+  # Smart naming
+  smart_folder_naming: true
+  use_semantic_naming: true
+  
+  # Integration features
+  watch_folders: []  # List of folders to monitor for automatic organization
+  
+  # Export/Import settings
+  export_organization_rules: true
+  import_custom_rules: true 
