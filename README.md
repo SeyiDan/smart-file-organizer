@@ -1,6 +1,12 @@
 # 🧠 Smart Semantic File Organizer
 
-An AI-powered, large-scale file organization system that categorizes files based on semantic content rather than just file extensions. Supports 25+ file types and leverages machine learning models built with TensorFlow and scikit-learn to achieve 96%+ classification accuracy. Uses distributed processing to handle high volumes of data, reducing file processing time by 80%. Developed in Python with a Flask backend and deployed in a containerized architecture for scalability and portability.
+An intelligent, NVIDIA NIM–powered file organizer that builds clean hierarchies via semantic content/metadata analysis across 25+ file types. In testing, it achieved ~96% detection accuracy and reduced manual organization time by ~80%. The system groups files by meaning (not just extensions) into coherent, cross‑format “projects.”
+
+NVIDIA NIM models used (configurable):
+- Embeddings: `nvidia/nv-embed-v1` (robust default) or `nvidia/nv-embedqa-e5-v5` (with query/passage handling)
+- Text analysis / LLM (Q&A, summaries): `nvidia/llama-3.3-nemotron-super-49b-v1.5`
+- Image analysis (vision tagging): `nvidia/cosmos-reason1-7b`
+- Reranker (retrieval refinement): `nvidia/nv-rerankqa-mistral-4b-v3`
 
 ## ✨ What Makes This Different
 
@@ -264,6 +270,26 @@ python file_organizer.py --source "C:\\Your\\Images" --backend nim --multimodal 
   - 0.20–0.35: loose; 0.40–0.55: balanced; 0.60–0.80: strict
 - Avoid deep nesting: `organization.min_files_for_subfolder` (default 3) prevents folder-per-single-file.
 - Real runs produce an undo file (JSON) for full rollback.
+
+## 🎬 Demo (2‑minute walkthrough)
+
+Use the included sample set in `Smart_Organized_Demo/`:
+
+```
+# Preview (no changes)
+python file_organizer.py --source ".\Smart_Organized_Demo" --backend nim --dry-run
+
+# Stage to a destination (originals untouched)
+python file_organizer.py --source ".\Smart_Organized_Demo" --backend nim --destination ".\Staging\Organized"
+
+# Semantic search
+python file_organizer.py --source ".\Smart_Organized_Demo" --backend nim --query "find presentation slides" --top-k 10
+
+# Q&A using Nemotron
+python file_organizer.py --source ".\Smart_Organized_Demo" --backend nim --qa "Summarize detected projects and key files"
+```
+
+Tip: adjust `ai_analysis.similarity_threshold` (default 0.5) to control grouping strictness.
 
 ## 🤝 Contributing
 
