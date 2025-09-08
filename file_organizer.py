@@ -86,7 +86,7 @@ async def organize_files_smart(source_path: str, destination_path: Optional[str]
         destination_path: Path to destination directory (optional)
         dry_run: If True, only show what would be done without actually moving files
     """
-    print(f"🚀 Starting SMART semantic file organization...")
+    print(f" Starting SMART semantic file organization...")
     print(f"Source: {source_path}")
     
     if destination_path:
@@ -95,7 +95,7 @@ async def organize_files_smart(source_path: str, destination_path: Optional[str]
         print("Destination: Smart_Organized_Files")
     
     if dry_run:
-        print("🧪 DRY RUN MODE - No files will be moved")
+        print(" DRY RUN MODE - No files will be moved")
     
     try:
         # Initialize smart organizer
@@ -107,19 +107,19 @@ async def organize_files_smart(source_path: str, destination_path: Optional[str]
             model_name = model_name or "nvidia/nv-embed-v1"
             nim_client = NIMClient(base_url=base_url, api_key=api_key)
             if not nim_client.is_configured():
-                print("❌ NVIDIA NIM not configured. Set NVIDIA_API_KEY and optionally NVIDIA_NIM_BASE_URL.")
+                print(" NVIDIA NIM not configured. Set NVIDIA_API_KEY and optionally NVIDIA_NIM_BASE_URL.")
                 sys.exit(1)
             try:
                 # If using e5-style embeddings, set input_type='passage' for documents
                 embedding_backend = NIMEmbeddingBackend(model_name, nim_client, force_e5=("e5" in model_name), input_type="passage")
-                print(f"✅ Using NIM embeddings: {model_name}")
+                print(f" Using NIM embeddings: {model_name}")
             except Exception as e:
-                print(f"❌ Failed to initialize NIM backend: {e}")
+                print(f" Failed to initialize NIM backend: {e}")
                 sys.exit(1)
         else:
             model_name = model_name or "all-MiniLM-L6-v2"
             embedding_backend = LocalEmbeddingBackend(model_name)
-            print(f"✅ Using local embeddings: {model_name}")
+            print(f" Using local embeddings: {model_name}")
 
         sim_threshold = _load_similarity_from_config(0.5)
         organizer = SmartFileOrganizer(
@@ -137,7 +137,7 @@ async def organize_files_smart(source_path: str, destination_path: Optional[str]
             result = await organizer.semantic_qa([source_path], question=qa, top_k=top_k,
                                                 llm_model=llm_model or "meta/llama3-70b-instruct",
                                                 api_key=api_key, base_url=base_url)
-            print("\n🧠 Q&A:")
+            print("\n Q&A:")
             print(result.get('answer', ''))
             if result.get('top_context'):
                 print("\nContext files:")
@@ -145,7 +145,7 @@ async def organize_files_smart(source_path: str, destination_path: Optional[str]
                     print(f" - {p}")
         elif query:
             result = await organizer.semantic_search([source_path], query=query, top_k=top_k)
-            print("\n🔎 Semantic search results:")
+            print("\n Semantic search results:")
             for item in result.get('results', []):
                 print(f"   {item['score']:.4f}  {item['path']}")
         else:
@@ -157,13 +157,13 @@ async def organize_files_smart(source_path: str, destination_path: Optional[str]
             )
         
         if 'error' in result:
-            print(f"❌ Smart organization failed: {result['error']}")
+            print(f" Smart organization failed: {result['error']}")
             print("   Falling back to basic organization...")
             return organize_files_basic(source_path, destination_path, dry_run)
         
         # Display results
         stats = result['statistics']
-        print(f"\n✅ SMART ORGANIZATION {'SIMULATION' if dry_run else 'COMPLETE'}")
+        print(f"\ SMART ORGANIZATION {'SIMULATION' if dry_run else 'COMPLETE'}")
         print(f"   Projects detected: {stats['total_projects_detected']}")
         print(f"   Files processed: {stats['total_files_processed']}")
         print(f"   Success rate: {stats['successful_operations']}/{stats['total_files_processed']}")
@@ -172,18 +172,18 @@ async def organize_files_smart(source_path: str, destination_path: Optional[str]
         if 'undo_file' in result:
             print(f"   Undo file: {result['undo_file']}")
         
-        print(f"\n📊 PROJECT BREAKDOWN:")
+        print(f"\n PROJECT BREAKDOWN:")
         for project_type, count in result['project_breakdown']['by_type'].items():
             print(f"   {project_type}: {count} projects")
             
-        print(f"\n🎯 DETECTED PROJECTS:")
+        print(f"\n DETECTED PROJECTS:")
         for project in result['detected_projects']:
             print(f"   • {project['name']} ({project['file_count']} files, confidence: {project['confidence']})")
         
         return result
         
     except Exception as e:
-        print(f"❌ Smart organization failed: {e}")
+        print(f" Smart organization failed: {e}")
         print("   Falling back to basic organization...")
         return organize_files_basic(source_path, destination_path, dry_run)
 
@@ -196,7 +196,7 @@ def organize_files_basic(source_path: str, destination_path: Optional[str] = Non
         destination_path: Path to destination directory (optional)
         dry_run: If True, only show what would be done without actually moving files
     """
-    print("❌ Basic mode is not available in this build. Use smart mode (default).")
+    print(" Basic mode is not available in this build. Use smart mode (default).")
     return
 
 def organize_files(source_path: str, destination_path: Optional[str] = None, dry_run: bool = False, use_smart: bool = True,
@@ -222,7 +222,7 @@ def organize_files(source_path: str, destination_path: Optional[str] = None, dry
     else:
         # Use basic organization
         if use_smart and not SMART_ORGANIZER_AVAILABLE:
-            print("⚠️  Smart organizer not available, using basic organization")
+            print(" Smart organizer not available, using basic organization")
         return organize_files_basic(source_path, destination_path, dry_run)
 
 
@@ -353,26 +353,26 @@ Examples:
     
     # Print banner
     if args.basic or not SMART_ORGANIZER_AVAILABLE:
-        print("🤖 AI-Powered File Organizer v2.0.0 (Basic Mode)")
+        print(" AI-Powered File Organizer v2.0.0 (Basic Mode)")
         print("   Traditional file type organization")
     else:
-        print("🧠 Smart Semantic File Organizer v2.0.0")
+        print(" Smart Semantic File Organizer v2.0.0")
         print("   Intelligent cross-format project detection")
     print("=" * 50)
     
     # Set up environment
     if not setup_environment():
-        print("❌ Environment setup failed")
+        print(" Environment setup failed")
         sys.exit(1)
     
     # Validate source path
     source_path = Path(args.source).expanduser().resolve()
     if not source_path.exists():
-        print(f"❌ Source directory does not exist: {source_path}")
+        print(f" Source directory does not exist: {source_path}")
         sys.exit(1)
     
     if not source_path.is_dir():
-        print(f"❌ Source path is not a directory: {source_path}")
+        print(f" Source path is not a directory: {source_path}")
         sys.exit(1)
     
     # Validate destination path if provided
@@ -380,7 +380,7 @@ Examples:
     if args.destination:
         destination_path = Path(args.destination).expanduser().resolve()
         if destination_path.exists() and not destination_path.is_dir():
-            print(f"❌ Destination path exists but is not a directory: {destination_path}")
+            print(f" Destination path exists but is not a directory: {destination_path}")
             sys.exit(1)
     
     try:
@@ -403,7 +403,7 @@ Examples:
         )
         
     except Exception as e:
-        print(f"❌ Unexpected error: {e}")
+        print(f" Unexpected error: {e}")
         sys.exit(1)
 
 
