@@ -29,7 +29,7 @@ def create_music_project():
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(content)
     
-    print(f"✅ Created music project files in {base_dir}")
+    print(f" Created music project files in {base_dir}")
 
 def create_academic_project():
     """Create academic research project files"""
@@ -57,7 +57,7 @@ def create_academic_project():
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(content)
     
-    print(f"✅ Created academic project files in {base_dir}")
+    print(f" Created academic project files in {base_dir}")
 
 def create_work_project():
     """Create business/work project files"""
@@ -83,7 +83,7 @@ def create_work_project():
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(content)
     
-    print(f"✅ Created work project files in {base_dir}")
+    print(f" Created work project files in {base_dir}")
 
 def create_photo_project():
     """Create vacation/photo project files"""
@@ -104,11 +104,11 @@ def create_photo_project():
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(content)
     
-    print(f"✅ Created photo/vacation project files in {base_dir}")
+    print(f" Created photo/vacation project files in {base_dir}")
 
 def main():
     """Create all test scenarios"""
-    print("🎬 Creating realistic test scenarios...")
+    print(" Creating realistic test scenarios...")
     print("This will create mixed files that should group into semantic projects\n")
     
     # Create all project types in the same directory (scattered)
@@ -117,11 +117,11 @@ def main():
     create_work_project()
     create_photo_project()
     
-    print(f"\n🎯 Test scenarios created!")
-    print(f"📁 All files are scattered in: test_scenarios/scattered_files/")
-    print(f"📊 Total files: {len(list(Path('test_scenarios/scattered_files').glob('*')))}")
+    print(f"\n Test scenarios created!")
+    print(f" All files are scattered in: test_scenarios/scattered_files/")
+    print(f" Total files: {len(list(Path('test_scenarios/scattered_files').glob('*')))}")
     
-    print(f"\n🧪 Now test the smart organizer:")
+    print(f"\n Now test the smart organizer:")
     print(f"   python file_organizer.py --source test_scenarios/scattered_files --dry-run")
     print(f"   python file_organizer.py --source test_scenarios/scattered_files --destination test_scenarios/organized")
 
