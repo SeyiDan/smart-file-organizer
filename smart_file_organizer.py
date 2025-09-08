@@ -75,7 +75,7 @@ class SmartFileOrganizer:
         Returns:
             Dictionary with organization results and statistics
         """
-        logger.info("🚀 Starting Smart File Organization")
+        logger.info(" Starting Smart File Organization")
         logger.info(f"   Source paths: {len(source_paths)}")
         logger.info(f"   Dry run: {dry_run}")
         
@@ -83,7 +83,7 @@ class SmartFileOrganizer:
         
         try:
             # Step 1: Collect all files from source paths
-            logger.info("\n📁 Collecting files...")
+            logger.info("\n Collecting files...")
             all_files = self._collect_files(source_paths)
             
             if not all_files:
@@ -92,7 +92,7 @@ class SmartFileOrganizer:
             logger.info(f"   Found {len(all_files)} files to analyze")
             
             # Step 2: Detect semantic projects
-            logger.info("\n🧠 Detecting semantic projects...")
+            logger.info("\n Detecting semantic projects...")
             projects = await self.project_detector.detect_projects(all_files)
             
             if not projects:
@@ -105,13 +105,13 @@ class SmartFileOrganizer:
                            f"confidence: {project.confidence:.2f})")
             
             # Step 3: Create organization plans
-            logger.info("\n📋 Creating organization plans...")
+            logger.info("\n Creating organization plans...")
             plans = self.hierarchy_builder.create_organization_plans(
                 projects, destination_dir
             )
             
             # Step 4: Execute plans
-            logger.info(f"\n{'🧪 Simulating' if dry_run else '🎯 Executing'} organization...")
+            logger.info(f"\n{' Simulating' if dry_run else '🎯 Executing'} organization...")
             execution_results = []
             undo_info = self.hierarchy_builder.create_undo_information(plans)
             
@@ -120,9 +120,9 @@ class SmartFileOrganizer:
                 execution_results.append(result)
                 
                 if not dry_run:
-                    logger.info(f"   ✅ {plan.project_name}: {result['successful_operations']} files organized")
+                    logger.info(f"    {plan.project_name}: {result['successful_operations']} files organized")
                 else:
-                    logger.info(f"   📝 {plan.project_name}: Would organize {result['total_operations']} files")
+                    logger.info(f"    {plan.project_name}: Would organize {result['total_operations']} files")
             
             # Step 5: Generate summary
             end_time = datetime.now()
@@ -138,15 +138,15 @@ class SmartFileOrganizer:
                 with open(undo_file, 'w') as f:
                     json.dump(undo_info, f, indent=2)
                 summary['undo_file'] = undo_file
-                logger.info(f"   💾 Undo information saved to {undo_file}")
+                logger.info(f"    Undo information saved to {undo_file}")
             
-            logger.info(f"\n🎉 Organization {'simulation' if dry_run else ''} completed!")
+            logger.info(f"\n Organization {'simulation' if dry_run else ''} completed!")
             logger.info(f"   Duration: {duration:.2f} seconds")
             
             return summary
             
         except Exception as e:
-            logger.error(f"❌ Organization failed: {e}", exc_info=True)
+            logger.error(f" Organization failed: {e}", exc_info=True)
             return {'error': str(e)}
     
     def _collect_files(self, source_paths: List[str]) -> List[str]:
@@ -253,7 +253,7 @@ class SmartFileOrganizer:
         Returns:
             Analysis results without organization
         """
-        logger.info("🔍 Analyzing files for project detection...")
+        logger.info(" Analyzing files for project detection...")
         
         # Collect files
         all_files = self._collect_files(source_paths)
@@ -350,16 +350,16 @@ class SmartFileOrganizer:
             with open(undo_file, 'r') as f:
                 undo_info = json.load(f)
                 
-            logger.info(f"🔄 Undoing organization from {undo_info['timestamp']}")
+            logger.info(f" Undoing organization from {undo_info['timestamp']}")
             
             results = self.hierarchy_builder.execute_undo(undo_info)
             
-            logger.info(f"✅ Undo completed: {results['successful_operations']} operations reversed")
+            logger.info(f" Undo completed: {results['successful_operations']} operations reversed")
             
             return results
             
         except Exception as e:
-            logger.error(f"❌ Undo failed: {e}")
+            logger.error(f" Undo failed: {e}")
             return {'error': str(e)}
 
 
