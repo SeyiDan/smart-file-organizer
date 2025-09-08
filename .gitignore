@@ -13,6 +13,12 @@ undo_info_*.json
 # Optional large demo/test areas
 Smart_Organized_Demo/
 safe_test_area/
+
+# De-redundant individual files (kept locally, untracked in repo)
+safe_smart_organizer.py
+cleanup_project.py
+SMART_ORGANIZER_GUIDE.md
+user_study_protocol.md
 __pycache__/
 *.py[cod]
 *$py.class
