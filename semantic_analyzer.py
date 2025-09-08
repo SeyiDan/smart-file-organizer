@@ -20,6 +20,10 @@ from collections import defaultdict
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from sentence_transformers import SentenceTransformer
+import torch
+from nim_integration.embeddings import EmbeddingBackend, LocalEmbeddingBackend
+from nim_integration.nim_client import NIMClient
 
 # File metadata extraction
 from mutagen import File as MutagenFile
@@ -56,14 +60,23 @@ class ProjectCluster:
 class SemanticAnalyzer:
     """Analyzes files to detect semantic relationships and project groupings"""
     
-    def __init__(self, similarity_threshold: float = 0.3):
+    def __init__(self, similarity_threshold: float = 0.3, use_embeddings: bool = True,
+                 embedding_backend: Optional[EmbeddingBackend] = None,
+                 enable_multimodal: bool = False,
+                 vision_model: Optional[str] = None,
+                 nim_api_key: Optional[str] = None,
+                 nim_base_url: Optional[str] = None):
         """
         Initialize semantic analyzer.
         
         Args:
             similarity_threshold: Minimum similarity score to consider files related
+            use_embeddings: Whether to use semantic embeddings for similarity calculation
         """
         self.similarity_threshold = similarity_threshold
+        self.use_embeddings = use_embeddings
+        
+        # Traditional TF-IDF vectorizer (fallback)
         self.vectorizer = TfidfVectorizer(
             max_features=1000,
             stop_words='english',
@@ -71,7 +84,29 @@ class SemanticAnalyzer:
             min_df=1,
             max_df=0.8
         )
+        
+        # Embedding backend selection (pluggable: local or NIM)
+        self.embedding_backend: Optional[EmbeddingBackend] = None
+        if self.use_embeddings:
+            if embedding_backend is not None:
+                self.embedding_backend = embedding_backend
+                logger.info(f"Using custom embedding backend: {type(embedding_backend).__name__}")
+            else:
+                # Default to local sentence-transformers backend
+                try:
+                    self.embedding_backend = LocalEmbeddingBackend("all-MiniLM-L6-v2")
+                    logger.info("Loaded local embedding backend: all-MiniLM-L6-v2")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize local embedding backend: {e}. Disabling embeddings.")
+                    self.use_embeddings = False
+
+        # Multimodal settings
+        self.enable_multimodal = enable_multimodal
+        self.vision_model = vision_model or "nvidia/nv-embed-v1"  # placeholder; user can set vision-capable chat model
+        self._nim_client = NIMClient(base_url=nim_base_url, api_key=nim_api_key) if enable_multimodal else None
+            
         self._keyword_cache: Dict[str, Set[str]] = {}
+        self._embedding_cache: Dict[str, np.ndarray] = {}
         
     async def analyze_file_signatures(self, file_paths: List[str]) -> List[FileSignature]:
         """
@@ -117,6 +152,34 @@ class SemanticAnalyzer:
         # Extract metadata
         metadata = await self._extract_metadata(file_path, file_type)
         
+        # Generate content embedding
+        content_embedding = None
+        if self.use_embeddings:
+            # Combine all textual content for embedding
+            all_text_content = []
+            
+            # Add filename tokens
+            all_text_content.extend(name_tokens)
+            
+            # Add content keywords
+            all_text_content.extend(content_keywords)
+            
+            # For documents, extract full text content for better embeddings
+            if file_type == 'document':
+                full_text = await self._extract_full_document_text(file_path)
+                if full_text:
+                    all_text_content.append(full_text)
+            
+            # Add metadata text
+            for key, value in metadata.items():
+                if isinstance(value, str) and value.strip():
+                    all_text_content.append(f"{key}: {value}")
+            
+            # Generate embedding from combined content
+            combined_text = ' '.join(all_text_content)
+            if combined_text.strip():
+                content_embedding = await self._generate_content_embedding(combined_text)
+        
         return FileSignature(
             path=file_path,
             file_type=file_type,
@@ -124,7 +187,8 @@ class SemanticAnalyzer:
             metadata=metadata,
             created_date=created_date,
             modified_date=modified_date,
-            name_tokens=name_tokens
+            name_tokens=name_tokens,
+            content_embedding=content_embedding
         )
     
     def _get_file_type(self, file_path: str) -> str:
@@ -187,7 +251,10 @@ class SemanticAnalyzer:
             elif file_type == 'audio':
                 keywords = await self._extract_audio_keywords(file_path)
             elif file_type == 'image':
-                keywords = await self._extract_image_keywords(file_path)
+                if self.enable_multimodal and self._nim_client and self._nim_client.is_configured():
+                    keywords = await self._extract_image_keywords_nim(file_path)
+                else:
+                    keywords = await self._extract_image_keywords(file_path)
             # Add more extractors as needed
                 
         except Exception as e:
@@ -246,6 +313,42 @@ class SemanticAnalyzer:
         
         return set()
     
+    async def _extract_full_document_text(self, file_path: str) -> Optional[str]:
+        """
+        Extract full text content from document for embedding generation.
+        
+        Args:
+            file_path: Path to document file
+            
+        Returns:
+            Full text content or None if extraction fails
+        """
+        try:
+            ext = Path(file_path).suffix.lower()
+            
+            if ext == '.txt' or ext == '.md':
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    return f.read()
+            elif ext == '.docx':
+                doc = docx.Document(file_path)
+                return '\n'.join([para.text for para in doc.paragraphs])
+            elif ext == '.pdf':
+                with open(file_path, 'rb') as f:
+                    import warnings
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings("ignore")
+                        try:
+                            pdf_reader = PyPDF2.PdfReader(f)
+                            # Extract from first 10 pages for embeddings
+                            return '\n'.join([
+                                page.extract_text() for page in pdf_reader.pages[:10]
+                            ])
+                        except Exception:
+                            return None
+        except Exception as e:
+            logger.debug(f"Error extracting full text from {file_path}: {e}")
+            return None
+    
     async def _extract_audio_keywords(self, file_path: str) -> Set[str]:
         """Extract keywords from audio metadata"""
         keywords = set()
@@ -289,6 +392,81 @@ class SemanticAnalyzer:
             logger.debug(f"Error reading image metadata {file_path}: {e}")
             
         return keywords
+
+    async def _extract_image_keywords_nim(self, file_path: str) -> Set[str]:
+        """Use NIM vision chat model to extract tags/keywords from image content."""
+        try:
+            with open(file_path, 'rb') as f:
+                img_bytes = f.read()
+            prompt = "List 5-15 short, lowercase, single or two-word tags describing this image content. Return comma-separated tags only."
+            resp = self._nim_client.vision_chat(self.vision_model, img_bytes, prompt, temperature=0.0)
+            text = resp.get('choices', [{}])[0].get('message', {}).get('content', '')
+            # Parse comma-separated tags
+            tags = [t.strip().lower() for t in re.split(r'[;,\n]+', text) if t.strip()]
+            # Keep short tokens
+            return set([t for t in tags if 2 <= len(t) <= 30 and all(c.isalnum() or c in {' ', '-', '_'} for c in t)])
+        except Exception as e:
+            logger.debug(f"NIM vision keyword extraction failed for {file_path}: {e}")
+            return await self._extract_image_keywords(file_path)
+    
+    async def _generate_content_embedding(self, text_content: str) -> Optional[np.ndarray]:
+        """
+        Generate semantic embedding for text content using sentence transformers.
+        
+        Args:
+            text_content: Text content to embed
+            
+        Returns:
+            Embedding vector or None if embeddings disabled/failed
+        """
+        if not self.use_embeddings or not self.embedding_backend or not text_content.strip():
+            return None
+            
+        # Check cache first
+        content_hash = hashlib.md5(text_content.encode()).hexdigest()
+        if content_hash in self._embedding_cache:
+            return self._embedding_cache[content_hash]
+            
+        try:
+            # Clean and truncate text (sentence transformers have token limits)
+            cleaned_text = re.sub(r'\s+', ' ', text_content.strip())
+            # Most models have ~512 token limit, roughly 400 words
+            words = cleaned_text.split()
+            if len(words) > 400:
+                cleaned_text = ' '.join(words[:400])
+                
+            # Generate embedding
+            # For e5-style backends, ensure query/passsage input type is correct when embedding arbitrary text
+            original_input_type = None
+            if hasattr(self.embedding_backend, 'force_e5') and getattr(self.embedding_backend, 'force_e5'):
+                # Treat generic content as 'passage'
+                original_input_type = getattr(self.embedding_backend, 'input_type', None)
+                try:
+                    setattr(self.embedding_backend, 'input_type', 'passage')
+                except Exception:
+                    pass
+            vectors = self.embedding_backend.embed([cleaned_text])
+            embedding = vectors[0] if vectors else None
+            
+            # Cache the result
+            if embedding is not None:
+                self._embedding_cache[content_hash] = embedding
+            
+            if embedding is not None:
+                logger.debug(f"Generated embedding of shape {embedding.shape}")
+            return embedding
+            
+        except Exception as e:
+            # Downgrade to debug to avoid noisy logs for non-embeddable items (e.g., binary/edge cases)
+            logger.debug(f"Skipping embedding for this content: {e}")
+            return None
+        finally:
+            # Restore input type for e5 backends if we changed it
+            if 'original_input_type' in locals() and original_input_type is not None:
+                try:
+                    setattr(self.embedding_backend, 'input_type', original_input_type)
+                except Exception:
+                    pass
     
     async def _extract_metadata(self, file_path: str, file_type: str) -> Dict[str, Any]:
         """Extract relevant metadata from file"""
@@ -356,26 +534,66 @@ class SemanticAnalyzer:
         """Calculate similarity between two file signatures"""
         similarities = []
         
-        # Name similarity
-        name_sim = len(sig1.name_tokens & sig2.name_tokens) / max(
-            len(sig1.name_tokens | sig2.name_tokens), 1
-        )
-        similarities.append(name_sim * 0.3)
+        # Semantic embedding similarity (primary method when available)
+        if (self.use_embeddings and 
+            sig1.content_embedding is not None and 
+            sig2.content_embedding is not None):
+            
+            # Calculate cosine similarity between embeddings
+            embedding_sim = cosine_similarity(
+                sig1.content_embedding.reshape(1, -1),
+                sig2.content_embedding.reshape(1, -1)
+            )[0][0]
+            
+            # Embeddings capture semantic meaning, so give it high weight
+            similarities.append(embedding_sim * 0.6)
+            
+            # Still use other factors but with reduced weights
+            name_sim = len(sig1.name_tokens & sig2.name_tokens) / max(
+                len(sig1.name_tokens | sig2.name_tokens), 1
+            )
+            similarities.append(name_sim * 0.2)
+            
+            # Date proximity
+            time_diff = abs((sig1.created_date - sig2.created_date).total_seconds())
+            max_time_diff = 30 * 24 * 3600  # 30 days
+            date_sim = max(0, 1 - (time_diff / max_time_diff))
+            similarities.append(date_sim * 0.1)
+            
+            # Metadata similarity
+            metadata_sim = self._calculate_metadata_similarity(sig1, sig2)
+            similarities.append(metadata_sim * 0.1)
+            
+        else:
+            # Fallback to traditional similarity calculation
+            # Name similarity
+            name_sim = len(sig1.name_tokens & sig2.name_tokens) / max(
+                len(sig1.name_tokens | sig2.name_tokens), 1
+            )
+            similarities.append(name_sim * 0.3)
+            
+            # Content keyword similarity
+            content_sim = len(sig1.content_keywords & sig2.content_keywords) / max(
+                len(sig1.content_keywords | sig2.content_keywords), 1
+            )
+            similarities.append(content_sim * 0.4)
+            
+            # Date proximity (files created/modified around same time)
+            time_diff = abs((sig1.created_date - sig2.created_date).total_seconds())
+            max_time_diff = 30 * 24 * 3600  # 30 days
+            date_sim = max(0, 1 - (time_diff / max_time_diff))
+            similarities.append(date_sim * 0.2)
+            
+            # Metadata similarity
+            metadata_sim = self._calculate_metadata_similarity(sig1, sig2)
+            similarities.append(metadata_sim * 0.1)
         
-        # Content keyword similarity
-        content_sim = len(sig1.content_keywords & sig2.content_keywords) / max(
-            len(sig1.content_keywords | sig2.content_keywords), 1
-        )
-        similarities.append(content_sim * 0.4)
-        
-        # Date proximity (files created/modified around same time)
-        time_diff = abs((sig1.created_date - sig2.created_date).total_seconds())
-        max_time_diff = 30 * 24 * 3600  # 30 days
-        date_sim = max(0, 1 - (time_diff / max_time_diff))
-        similarities.append(date_sim * 0.2)
-        
-        # Metadata similarity (for same file types)
+        return sum(similarities)
+    
+    def _calculate_metadata_similarity(self, sig1: FileSignature, sig2: FileSignature) -> float:
+        """Calculate metadata similarity between two file signatures"""
         metadata_sim = 0
+        
         if sig1.file_type == sig2.file_type and sig1.file_type == 'audio':
             # Special handling for audio files
             if (sig1.metadata.get('artist') and sig2.metadata.get('artist') and
@@ -384,9 +602,8 @@ class SemanticAnalyzer:
             if (sig1.metadata.get('album') and sig2.metadata.get('album') and
                 sig1.metadata['album'] == sig2.metadata['album']):
                 metadata_sim = max(metadata_sim, 0.8)
-        similarities.append(metadata_sim * 0.1)
         
-        return sum(similarities)
+        return metadata_sim
     
     def _cluster_files(self, signatures: List[FileSignature], 
                       similarity_matrix: np.ndarray) -> List[List[FileSignature]]:
@@ -485,12 +702,118 @@ class SemanticAnalyzer:
     def _generate_project_name(self, files: List[FileSignature], 
                              keywords: Set[str], project_type: str) -> str:
         """Generate a meaningful name for the project"""
-        # Use most common keywords
+        # Use most frequent keyword across files to improve naming
         if keywords:
-            primary_keyword = sorted(keywords)[0]  # Take first alphabetically for consistency
+            from collections import Counter as _Counter
+            counter = _Counter()
+            for f in files:
+                for k in (f.content_keywords | f.name_tokens):
+                    if k in keywords:
+                        counter[k] += 1
+            primary_keyword = (counter.most_common(1)[0][0] if counter else sorted(keywords)[0])
             return f"{project_type.title()}_Project_{primary_keyword.title()}"
             
         # Fallback to date-based naming
         dates = [f.created_date for f in files]
         avg_date = min(dates)
         return f"{project_type.title()}_Project_{avg_date.strftime('%Y_%m')}"
+    
+    def get_embedding_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about embedding usage.
+        
+        Returns:
+            Dictionary with embedding statistics
+        """
+        backend_name = type(self.embedding_backend).__name__ if self.embedding_backend else None
+        model_name = None
+        try:
+            # Best-effort to expose model name attribute when available
+            if hasattr(self.embedding_backend, 'model_name'):
+                model_name = getattr(self.embedding_backend, 'model_name')
+        except Exception:
+            model_name = None
+        return {
+            'embeddings_enabled': self.use_embeddings,
+            'backend': backend_name,
+            'model_name': model_name,
+            'cache_size': len(self._embedding_cache),
+            'keywords_cache_size': len(self._keyword_cache)
+        }
+    
+    def clear_caches(self):
+        """Clear embedding and keyword caches to free memory"""
+        self._embedding_cache.clear()
+        self._keyword_cache.clear()
+        logger.info("Cleared embedding and keyword caches")
+    
+    def set_embedding_mode(self, use_embeddings: bool):
+        """
+        Enable or disable embedding usage.
+        
+        Args:
+            use_embeddings: Whether to use embeddings for similarity calculation
+        """
+        if use_embeddings and not self.embedding_backend:
+            try:
+                self.embedding_backend = LocalEmbeddingBackend("all-MiniLM-L6-v2")
+                self.use_embeddings = True
+                logger.info("Enabled semantic embeddings with LocalEmbeddingBackend")
+            except Exception as e:
+                logger.error(f"Failed to enable embeddings: {e}")
+                self.use_embeddings = False
+        else:
+            self.use_embeddings = use_embeddings
+            if not use_embeddings:
+                self.embedding_backend = None
+            logger.info(f"Embeddings {'enabled' if use_embeddings else 'disabled'}")
+
+    def embed_text(self, text: str) -> Optional[np.ndarray]:
+        """Public helper to embed arbitrary text with the configured backend."""
+        if not self.use_embeddings or not self.embedding_backend:
+            return None
+        if not text or not text.strip():
+            return None
+        try:
+            # For e5-style backends, embed query with input_type='query' for better retrieval
+            original_input_type = None
+            if hasattr(self.embedding_backend, 'force_e5') and getattr(self.embedding_backend, 'force_e5'):
+                original_input_type = getattr(self.embedding_backend, 'input_type', None)
+                try:
+                    setattr(self.embedding_backend, 'input_type', 'query')
+                except Exception:
+                    pass
+            vectors = self.embedding_backend.embed([text])
+            return vectors[0] if vectors else None
+        except Exception as e:
+            logger.debug(f"Skipping query embedding: {e}")
+            return None
+        finally:
+            if 'original_input_type' in locals() and original_input_type is not None:
+                try:
+                    setattr(self.embedding_backend, 'input_type', original_input_type)
+                except Exception:
+                    pass
+
+    def rank_by_text_similarity(self, query: str, signatures: List[FileSignature], top_k: int = 10) -> List[tuple]:
+        """
+        Rank files by cosine similarity between query text and file content embeddings.
+        Returns list of tuples: (file_path, score).
+        """
+        if not self.use_embeddings or not self.embedding_backend:
+            return []
+        from sklearn.metrics.pairwise import cosine_similarity as _cos
+        query_vec = self.embed_text(query)
+        if query_vec is None:
+            return []
+        scored = []
+        for sig in signatures:
+            if sig.content_embedding is None:
+                continue
+            try:
+                score = float(_cos(sig.content_embedding.reshape(1, -1), query_vec.reshape(1, -1))[0][0])
+                scored.append((sig.path, score))
+            except Exception:
+                continue
+        scored.sort(key=lambda x: x[1], reverse=True)
+        return scored[:max(0, top_k)]

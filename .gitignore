@@ -1,4 +1,18 @@
 # Byte-compiled / optimized / DLL files
+\n+# Project-specific runtime/output
+logs/
+backups/
+temp/
+Smart_Organized_Files/
+undo_info_*.json
+*.log
+
+# Environment and secrets
+.env
+
+# Optional large demo/test areas
+Smart_Organized_Demo/
+safe_test_area/
 __pycache__/
 *.py[cod]
 *$py.class

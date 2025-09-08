@@ -7,6 +7,9 @@ typing-extensions>=4.7.1
 # AI and ML libraries for semantic analysis
 numpy>=1.21.0
 scikit-learn>=1.0.0
+sentence-transformers>=2.2.2  # For semantic embeddings
+torch>=1.9.0                  # Required by sentence-transformers
+transformers>=4.21.0          # Transformer models
 # NVIDIA NIM integration (optional)
 # nimblygpt>=0.1.0
 # openai>=1.0.0

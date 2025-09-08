@@ -12,6 +12,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 import re
 from collections import defaultdict, Counter
+from pathlib import Path as _Path
+try:
+    import yaml  # type: ignore
+except Exception:
+    yaml = None
 
 from semantic_analyzer import SemanticAnalyzer, FileSignature, ProjectCluster
 
@@ -145,16 +150,32 @@ class ProjectDetector:
         """Create subcategories within a file type based on content/metadata"""
         if not files:
             return {}
+        
+        # Respect minimum size before creating subfolders: place files directly if small
+        min_size = self._min_files_for_subfolder()
+        if len(files) < min_size:
+            return [f.path for f in files]  # Return list to avoid extra folder nesting
             
         # Special handling for different project types
         if project_type == 'music' and files[0].file_type == 'audio':
-            return self._create_audio_subcategories(files)
+            sub = self._create_audio_subcategories(files)
         elif project_type == 'academic' and files[0].file_type == 'document':
-            return self._create_document_subcategories(files)
+            sub = self._create_document_subcategories(files)
         elif project_type == 'photos' and files[0].file_type == 'image':
-            return self._create_image_subcategories(files)
+            sub = self._create_image_subcategories(files)
         else:
-            return self._create_generic_subcategories(files)
+            sub = self._create_generic_subcategories(files)
+
+        # If each subcategory contains only one file, avoid deep folders: flatten
+        try:
+            if isinstance(sub, dict):
+                lists = list(sub.values())
+                if lists and all(isinstance(v, list) and len(v) == 1 for v in lists):
+                    return [v[0] for v in lists]
+        except Exception:
+            pass
+
+        return sub
     
     def _create_audio_subcategories(self, files: List[FileSignature]) -> Dict[str, List[str]]:
         """Create subcategories for audio files"""
@@ -274,6 +295,22 @@ class ProjectDetector:
             safe_name = 'Untitled'
             
         return safe_name
+
+    def _min_files_for_subfolder(self) -> int:
+        """Load minimum files required to create a subfolder from config.yaml; default to 3."""
+        default_val = 3
+        try:
+            if yaml is not None:
+                cfg_path = _Path.cwd() / 'config.yaml'
+                if cfg_path.exists():
+                    with open(cfg_path, 'r', encoding='utf-8') as f:
+                        cfg = yaml.safe_load(f) or {}
+                    org = (cfg.get('organization', {}) or {})
+                    val = int(org.get('min_files_for_subfolder', default_val))
+                    return val if val > 1 else default_val
+        except Exception:
+            pass
+        return default_val
     
     def get_project_summary(self, projects: List[ProjectStructure]) -> Dict[str, Any]:
         """Generate summary statistics for detected projects"""

@@ -13,6 +13,8 @@ import json
 from datetime import datetime
 
 from semantic_analyzer import SemanticAnalyzer
+from nim_integration.embeddings import EmbeddingBackend
+from nim_integration.nim_client import NIMClient
 from project_detector import ProjectDetector, ProjectStructure
 from hierarchy_builder import HierarchyBuilder, OrganizationPlan
 
@@ -31,15 +33,30 @@ class SmartFileOrganizer:
     
     def __init__(self, 
                  similarity_threshold: float = 0.3,
-                 base_output_dir: str = "Organized_Files"):
+                 base_output_dir: str = "Organized_Files",
+                 use_embeddings: bool = True,
+                 embedding_backend: Optional[EmbeddingBackend] = None,
+                 enable_multimodal: bool = False,
+                 vision_model: Optional[str] = None,
+                 nim_api_key: Optional[str] = None,
+                 nim_base_url: Optional[str] = None):
         """
         Initialize the smart file organizer.
         
         Args:
             similarity_threshold: Minimum similarity to group files into projects
             base_output_dir: Base directory for organized output
+            use_embeddings: Whether to use semantic embeddings for improved similarity
         """
-        self.semantic_analyzer = SemanticAnalyzer(similarity_threshold)
+        self.semantic_analyzer = SemanticAnalyzer(
+            similarity_threshold=similarity_threshold,
+            use_embeddings=use_embeddings,
+            embedding_backend=embedding_backend,
+            enable_multimodal=enable_multimodal,
+            vision_model=vision_model,
+            nim_api_key=nim_api_key,
+            nim_base_url=nim_base_url,
+        )
         self.project_detector = ProjectDetector(self.semantic_analyzer)
         self.hierarchy_builder = HierarchyBuilder(base_output_dir)
         
@@ -267,6 +284,56 @@ class SmartFileOrganizer:
                 }
                 for p in projects
             ]
+        }
+
+    async def semantic_search(self, source_paths: List[str], query: str, top_k: int = 10) -> Dict[str, Any]:
+        """
+        Search files semantically using the configured embedding backend.
+        """
+        files = self._collect_files(source_paths)
+        if not files:
+            return {'error': 'No files found'}
+        # Build signatures (includes embeddings when enabled)
+        signatures = await self.semantic_analyzer.analyze_file_signatures(files)
+        results = self.semantic_analyzer.rank_by_text_similarity(query, signatures, top_k=top_k)
+        return {
+            'query': query,
+            'results': [{'path': p, 'score': round(float(s), 4)} for p, s in results]
+        }
+
+    async def semantic_qa(self, source_paths: List[str], question: str, top_k: int = 8,
+                          llm_model: str = "meta/llama3-70b-instruct",
+                          api_key: str = None, base_url: str = None) -> Dict[str, Any]:
+        """
+        Simple retrieval + LLM answer using NIM chat completions.
+        """
+        files = self._collect_files(source_paths)
+        if not files:
+            return {'error': 'No files found'}
+        signatures = await self.semantic_analyzer.analyze_file_signatures(files)
+        ranked = self.semantic_analyzer.rank_by_text_similarity(question, signatures, top_k=top_k)
+        context_snippets = []
+        for path, _score in ranked:
+            try:
+                p = Path(path)
+                if p.suffix.lower() in {'.txt', '.md'}:
+                    context_snippets.append((path, p.read_text(encoding='utf-8', errors='ignore')[:1200]))
+                else:
+                    context_snippets.append((path, p.stem))
+            except Exception:
+                context_snippets.append((path, p.stem))
+        context_text = "\n\n".join([f"[{Path(p).name}]\n{snippet}" for p, snippet in context_snippets])
+        nim = NIMClient(base_url=base_url, api_key=api_key)
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant that answers strictly from the provided context."},
+            {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion: {question}\nAnswer concisely."}
+        ]
+        resp = nim.chat_completion(llm_model, messages, temperature=0.2)
+        answer = resp.get('choices', [{}])[0].get('message', {}).get('content', '')
+        return {
+            'question': question,
+            'answer': answer,
+            'top_context': [p for p, _ in ranked]
         }
     
     def undo_organization(self, undo_file: str) -> Dict[str, Any]:

@@ -219,6 +219,52 @@ python demo_smart_organizer.py
 - **Conflict Resolution**: Smart handling of duplicate filenames
 - **Progress Tracking**: Real-time feedback with progress bars
 
+## ⚡ Quick Start with NVIDIA NIM
+
+1. Set your API key (Windows PowerShell):
+```
+$env:NVIDIA_API_KEY = "YOUR_KEY"
+```
+
+2. Configure models in `config.yaml` (defaults already provided):
+```
+nvidia_nim:
+  models:
+    embeddings: "nvidia/nv-embed-v1"
+    text_analysis: "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    image_analysis: "nvidia/cosmos-reason1-7b"
+    reranker: "nvidia/nv-rerankqa-mistral-4b-v3"
+```
+
+3. Preview (no changes):
+```
+python file_organizer.py --source "C:\\Your\\Folder" --backend nim --dry-run
+```
+
+4. Stage to a destination (originals untouched):
+```
+python file_organizer.py --source "C:\\Your\\Folder" --backend nim --destination "C:\\Staging\\Organized"
+```
+
+5. Q&A over your files (Nemotron):
+```
+python file_organizer.py --source "C:\\Your\\Folder" --backend nim --qa "Summarize projects and key files"
+```
+
+6. Multimodal image tagging (vision):
+```
+python file_organizer.py --source "C:\\Your\\Images" --backend nim --multimodal --dry-run
+```
+
+## ✅ Safe Workflow
+
+- Always start with `--dry-run` to preview plans.
+- Use `--destination` to stage results for review before committing.
+- Control grouping strictness: `ai_analysis.similarity_threshold` (0.5 default)
+  - 0.20–0.35: loose; 0.40–0.55: balanced; 0.60–0.80: strict
+- Avoid deep nesting: `organization.min_files_for_subfolder` (default 3) prevents folder-per-single-file.
+- Real runs produce an undo file (JSON) for full rollback.
+
 ## 🤝 Contributing
 
 1. Fork the repository

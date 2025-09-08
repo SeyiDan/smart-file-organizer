@@ -11,14 +11,46 @@ from pathlib import Path
 from typing import Optional
 import time
 from datetime import datetime
+import logging
+try:
+    # Ensure UTF-8 output on Windows consoles to avoid emoji encoding errors
+    import sys as _sys
+    _sys.stdout.reconfigure(encoding='utf-8', errors='ignore')
+except Exception:
+    pass
 
-# Add src directory to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+try:
+    import yaml  # type: ignore
+except Exception:
+    yaml = None
 
-from src.utils.config import config
-from src.utils.logger import logger
-from src.core.file_scanner import FileScanner
-from src.ai.nvidia_nim_client import NVIDIANIMClient
+from pathlib import Path as _Path
+
+def _load_nim_models_from_config() -> dict:
+    """Best-effort load of model IDs from config.yaml in CWD."""
+    models = {}
+    try:
+        cfg_path = _Path.cwd() / 'config.yaml'
+        if yaml and cfg_path.exists():
+            with open(cfg_path, 'r', encoding='utf-8') as f:
+                cfg = yaml.safe_load(f) or {}
+            models = (cfg.get('nvidia_nim', {}) or {}).get('models', {}) or {}
+    except Exception:
+        models = {}
+    return models
+
+def _load_similarity_from_config(default_value: float = 0.5) -> float:
+    try:
+        cfg_path = _Path.cwd() / 'config.yaml'
+        if yaml and cfg_path.exists():
+            with open(cfg_path, 'r', encoding='utf-8') as f:
+                cfg = yaml.safe_load(f) or {}
+            return float(((cfg.get('ai_analysis', {}) or {}).get('similarity_threshold', default_value)))
+    except Exception:
+        pass
+    return default_value
+from nim_integration import NIMClient
+from nim_integration.embeddings import LocalEmbeddingBackend, NIMEmbeddingBackend
 
 # Import new smart semantic organizer
 try:
@@ -35,23 +67,17 @@ def setup_environment():
     for directory in directories:
         Path(directory).mkdir(exist_ok=True)
     
-    # Validate configuration
-    issues = config.validate_config()
-    if issues['errors']:
-        print("❌ Configuration errors found:")
-        for error in issues['errors']:
-            print(f"   • {error}")
-        return False
-    
-    if issues['warnings']:
-        print("⚠️  Configuration warnings:")
-        for warning in issues['warnings']:
-            print(f"   • {warning}")
-    
+    # Basic logging setup
+    logging.basicConfig(level=logging.INFO)
     return True
 
 
-async def organize_files_smart(source_path: str, destination_path: Optional[str] = None, dry_run: bool = False):
+async def organize_files_smart(source_path: str, destination_path: Optional[str] = None, dry_run: bool = False,
+                               backend: Optional[str] = None, embed_model: Optional[str] = None,
+                               query: Optional[str] = None, top_k: int = 10,
+                               api_key: Optional[str] = None, base_url: Optional[str] = None,
+                               qa: Optional[str] = None, llm_model: Optional[str] = None,
+                               multimodal: bool = False, vision_model: Optional[str] = None):
     """
     Organize files using the new smart semantic detection system.
     
@@ -73,17 +99,62 @@ async def organize_files_smart(source_path: str, destination_path: Optional[str]
     
     try:
         # Initialize smart organizer
+        # Build embedding backend
+        embedding_backend = None
+        selected_backend = (backend or "local").lower()
+        model_name = embed_model
+        if selected_backend == "nim":
+            model_name = model_name or "nvidia/nv-embed-v1"
+            nim_client = NIMClient(base_url=base_url, api_key=api_key)
+            if not nim_client.is_configured():
+                print("❌ NVIDIA NIM not configured. Set NVIDIA_API_KEY and optionally NVIDIA_NIM_BASE_URL.")
+                sys.exit(1)
+            try:
+                # If using e5-style embeddings, set input_type='passage' for documents
+                embedding_backend = NIMEmbeddingBackend(model_name, nim_client, force_e5=("e5" in model_name), input_type="passage")
+                print(f"✅ Using NIM embeddings: {model_name}")
+            except Exception as e:
+                print(f"❌ Failed to initialize NIM backend: {e}")
+                sys.exit(1)
+        else:
+            model_name = model_name or "all-MiniLM-L6-v2"
+            embedding_backend = LocalEmbeddingBackend(model_name)
+            print(f"✅ Using local embeddings: {model_name}")
+
+        sim_threshold = _load_similarity_from_config(0.5)
         organizer = SmartFileOrganizer(
-            similarity_threshold=0.3,
-            base_output_dir=destination_path or "Smart_Organized_Files"
+            similarity_threshold=sim_threshold,
+            base_output_dir=destination_path or "Smart_Organized_Files",
+            use_embeddings=True,
+            embedding_backend=embedding_backend,
+            enable_multimodal=multimodal,
+            vision_model=vision_model,
+            nim_api_key=api_key,
+            nim_base_url=base_url,
         )
         
-        # Execute smart organization
-        result = await organizer.organize_files(
-            source_paths=[source_path],
-            destination_dir=destination_path,
-            dry_run=dry_run
-        )
+        if qa:
+            result = await organizer.semantic_qa([source_path], question=qa, top_k=top_k,
+                                                llm_model=llm_model or "meta/llama3-70b-instruct",
+                                                api_key=api_key, base_url=base_url)
+            print("\n🧠 Q&A:")
+            print(result.get('answer', ''))
+            if result.get('top_context'):
+                print("\nContext files:")
+                for p in result['top_context']:
+                    print(f" - {p}")
+        elif query:
+            result = await organizer.semantic_search([source_path], query=query, top_k=top_k)
+            print("\n🔎 Semantic search results:")
+            for item in result.get('results', []):
+                print(f"   {item['score']:.4f}  {item['path']}")
+        else:
+            # Execute smart organization
+            result = await organizer.organize_files(
+                source_paths=[source_path],
+                destination_dir=destination_path,
+                dry_run=dry_run
+            )
         
         if 'error' in result:
             print(f"❌ Smart organization failed: {result['error']}")
@@ -125,121 +196,15 @@ def organize_files_basic(source_path: str, destination_path: Optional[str] = Non
         destination_path: Path to destination directory (optional)
         dry_run: If True, only show what would be done without actually moving files
     """
-    print(f"🔍 Starting basic file organization...")
-    print(f"Source: {source_path}")
-    
-    if destination_path:
-        print(f"Destination: {destination_path}")
-    else:
-        print("Destination: In-place organization")
-    
-    if dry_run:
-        print("🧪 DRY RUN MODE - No files will be moved")
-    
-    # Initialize components
-    scanner = FileScanner()
-    
-    # Check if NVIDIA NIM is available
-    nim_available = False
-    try:
-        nim_client = NVIDIANIMClient()
-        nim_available = nim_client.is_available()
-        if nim_available:
-            print("✅ NVIDIA NIM connected successfully")
-        else:
-            print("⚠️  NVIDIA NIM not available - using basic classification")
-    except Exception as e:
-        print(f"⚠️  NVIDIA NIM initialization failed: {e}")
-        print("   Continuing with basic classification...")
-    
-    # Start organization session
-    start_time = time.time()
-    logger.log_session_start(source_path, destination_path or "in-place")
-    
-    try:
-        # Step 1: Scan files
-        print("\n📁 Scanning files...")
-        files = scanner.scan_directory(source_path, recursive=True)
-        
-        if not files:
-            print("❌ No files found to organize")
-            return
-        
-        print(f"📊 Found {len(files)} files to process")
-        
-        # Step 2: Show statistics
-        stats = scanner.get_scan_statistics(files)
-        print(f"   Total size: {stats.get('total_size_human', 'Unknown')}")
-        print(f"   File types: {len(stats.get('file_types', {}))}")
-        if stats.get('duplicates', 0) > 0:
-            print(f"   Duplicates found: {stats['duplicates']}")
-        
-        # Step 3: Analyze content (if NIM is available)
-        if nim_available and not dry_run:
-            print("\n🤖 Analyzing file content with AI...")
-            # For now, we'll implement a basic version
-            # The full AI analysis will be implemented in the next iteration
-            print("   AI content analysis will be implemented in the next phase")
-        
-        # Step 4: Organize files
-        print(f"\n📋 {'Would organize' if dry_run else 'Organizing'} files...")
-        
-        organized_count = 0
-        error_count = 0
-        
-        # Basic organization by file type for now
-        for file_info in files:
-            try:
-                # Generate target path based on file type
-                if destination_path:
-                    base_path = Path(destination_path)
-                else:
-                    base_path = Path(source_path)
-                
-                # Create folder hierarchy: FileType > Category
-                target_dir = base_path / file_info.file_type.title()
-                
-                # Add subcategory based on extension
-                categories = config.get_categories_for_type(file_info.file_type)
-                if categories:
-                    target_dir = target_dir / categories[0]
-                
-                if dry_run:
-                    print(f"   📄 {file_info.name}{file_info.extension} → {target_dir}")
-                else:
-                    # Create target directory
-                    target_dir.mkdir(parents=True, exist_ok=True)
-                    
-                    # Move file (for now, we'll just log the action)
-                    target_file = target_dir / f"{file_info.name}{file_info.extension}"
-                    logger.log_file_operation("ORGANIZE", file_info.path, str(target_file))
-                    print(f"   ✅ {file_info.name}{file_info.extension}")
-                
-                organized_count += 1
-                
-            except Exception as e:
-                error_count += 1
-                logger.log_error_with_context(e, "File organization", file_info.path)
-                print(f"   ❌ Error organizing {file_info.name}: {e}")
-        
-        # Step 5: Summary
-        duration = time.time() - start_time
-        print(f"\n{'📊 DRY RUN SUMMARY' if dry_run else '✅ ORGANIZATION COMPLETE'}")
-        print(f"   Files processed: {organized_count}")
-        if error_count > 0:
-            print(f"   Errors: {error_count}")
-        print(f"   Duration: {duration:.2f} seconds")
-        
-        logger.log_session_end(organized_count, error_count, duration)
-        
-    except KeyboardInterrupt:
-        print("\n🛑 Organization cancelled by user")
-        logger.log_info("Organization cancelled by user")
-    except Exception as e:
-        print(f"\n❌ Organization failed: {e}")
-        logger.log_error_with_context(e, "Main organization process")
+    print("❌ Basic mode is not available in this build. Use smart mode (default).")
+    return
 
-def organize_files(source_path: str, destination_path: Optional[str] = None, dry_run: bool = False, use_smart: bool = True):
+def organize_files(source_path: str, destination_path: Optional[str] = None, dry_run: bool = False, use_smart: bool = True,
+                   backend: Optional[str] = None, embed_model: Optional[str] = None,
+                   query: Optional[str] = None, top_k: int = 10,
+                   api_key: Optional[str] = None, base_url: Optional[str] = None,
+                   qa: Optional[str] = None, llm_model: Optional[str] = None,
+                   multimodal: bool = False, vision_model: Optional[str] = None):
     """
     Main organize function - can use smart semantic detection or fall back to basic.
     
@@ -253,7 +218,7 @@ def organize_files(source_path: str, destination_path: Optional[str] = None, dry
     if use_smart and SMART_ORGANIZER_AVAILABLE:
         # Use new smart semantic organization
         import asyncio
-        return asyncio.run(organize_files_smart(source_path, destination_path, dry_run))
+        return asyncio.run(organize_files_smart(source_path, destination_path, dry_run, backend=backend, embed_model=embed_model, query=query, top_k=top_k, api_key=api_key, base_url=base_url, qa=qa, llm_model=llm_model, multimodal=multimodal, vision_model=vision_model))
     else:
         # Use basic organization
         if use_smart and not SMART_ORGANIZER_AVAILABLE:
@@ -308,6 +273,60 @@ Examples:
         action='store_true',
         help='Use basic organization instead of smart semantic detection'
     )
+
+    parser.add_argument(
+        '--backend',
+        choices=['local', 'nim'],
+        help='Embedding backend to use (default: local)'
+    )
+
+    parser.add_argument(
+        '--embed-model',
+        help='Embedding model name (local or NIM model identifier)'
+    )
+
+    parser.add_argument(
+        '--query',
+        help='Run semantic search instead of organizing (provide natural language query)'
+    )
+
+    parser.add_argument(
+        '--top-k',
+        type=int,
+        default=10,
+        help='Number of results to return for semantic search'
+    )
+
+    parser.add_argument(
+        '--multimodal',
+        action='store_true',
+        help='Enable multimodal analysis (placeholder; future enhancement)'
+    )
+
+    parser.add_argument(
+        '--vision-model',
+        help='NIM vision model to use when --multimodal is set'
+    )
+
+    parser.add_argument(
+        '--qa',
+        help='Run semantic Q&A over your files (retrieval + NIM LLM)'
+    )
+
+    parser.add_argument(
+        '--llm-model',
+        help='NIM LLM model for --qa (default: meta/llama3-70b-instruct)'
+    )
+
+    parser.add_argument(
+        '--api-key',
+        help='Override NVIDIA_API_KEY for this run'
+    )
+
+    parser.add_argument(
+        '--base-url',
+        help='Override NVIDIA_NIM_BASE_URL for this run'
+    )
     
     parser.add_argument(
         '--version',
@@ -316,15 +335,21 @@ Examples:
     )
     
     args = parser.parse_args()
+
+    # Fill defaults from config.yaml models if not provided
+    nm = _load_nim_models_from_config()
+    if not args.embed_model and 'embeddings' in nm:
+        args.embed_model = nm['embeddings']
+    if not args.llm_model and 'text_analysis' in nm:
+        args.llm_model = nm['text_analysis']
+    if not args.vision_model and 'image_analysis' in nm:
+        args.vision_model = nm['image_analysis']
     
     # Set up logging level
     if args.verbose:
-        logger.set_level("DEBUG")
+        logging.getLogger().setLevel(logging.DEBUG)
     
-    # Load custom config if provided
-    if args.config:
-        config.config_path = args.config
-        config.reload()
+    # Note: config file support for the legacy 'src' package is disabled in this build
     
     # Print banner
     if args.basic or not SMART_ORGANIZER_AVAILABLE:
@@ -364,12 +389,21 @@ Examples:
             source_path=str(source_path),
             destination_path=str(destination_path) if destination_path else None,
             dry_run=args.dry_run,
-            use_smart=not args.basic and SMART_ORGANIZER_AVAILABLE
+            use_smart=not args.basic and SMART_ORGANIZER_AVAILABLE,
+            backend=args.backend,
+            embed_model=args.embed_model,
+            query=args.query,
+            top_k=args.top_k,
+            api_key=args.api_key,
+            base_url=args.base_url,
+            qa=args.qa,
+            llm_model=args.llm_model,
+            multimodal=args.multimodal,
+            vision_model=args.vision_model
         )
         
     except Exception as e:
         print(f"❌ Unexpected error: {e}")
-        logger.log_error_with_context(e, "Main application")
         sys.exit(1)
 
 

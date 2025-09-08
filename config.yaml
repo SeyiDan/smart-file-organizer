@@ -5,10 +5,10 @@ nvidia_nim:
   api_key: "${NVIDIA_API_KEY}"  # Set via environment variable
   base_url: "https://integrate.api.nvidia.com/v1"
   models:
-    text_analysis: "meta/llama3-70b-instruct"
-    image_analysis: "nvidia/nv-embed-v1"
+    text_analysis: "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    image_analysis: "nvidia/cosmos-reason1-7b"
     embeddings: "nvidia/nv-embed-v1"
-    reranker: "nvidia/nv-rerank-qa-mistral-4b"
+    reranker: "nvidia/nv-rerankqa-mistral-4b-v3"
 
 # File Organization Settings
 organization:
@@ -16,7 +16,7 @@ organization:
   max_depth: 4
   
   # Minimum files per category to create subfolder
-  min_files_for_subfolder: 3
+  min_files_for_subfolder: 5
   
   # File size limits (in MB)
   max_file_size: 1000
@@ -99,7 +99,7 @@ ai_analysis:
   
   # Confidence thresholds
   classification_confidence: 0.7
-  similarity_threshold: 0.8
+  similarity_threshold: 0.7
   
   # Batch processing
   batch_size: 10
