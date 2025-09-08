@@ -15,9 +15,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Import our updated semantic analyzer
 try:
     from semantic_analyzer import SemanticAnalyzer
-    print("✅ Successfully imported SemanticAnalyzer")
+    print(" Successfully imported SemanticAnalyzer")
 except ImportError as e:
-    print(f"❌ Failed to import SemanticAnalyzer: {e}")
+    print(f" Failed to import SemanticAnalyzer: {e}")
     print("Please install the new requirements: pip install -r requirements.txt")
     exit(1)
 
@@ -72,7 +72,7 @@ async def create_test_files():
 
 async def test_semantic_analysis():
     """Test the semantic analysis with and without embeddings"""
-    print("\n🔬 Testing Semantic Analysis with Embeddings")
+    print("\n Testing Semantic Analysis with Embeddings")
     print("=" * 50)
     
     # Create test files
@@ -80,7 +80,7 @@ async def test_semantic_analysis():
     print(f"Created {len(test_files)} test files")
     
     # Test with embeddings enabled
-    print("\n📊 Testing with Semantic Embeddings ENABLED:")
+    print("\n Testing with Semantic Embeddings ENABLED:")
     analyzer_with_embeddings = SemanticAnalyzer(
         similarity_threshold=0.3, 
         use_embeddings=True
@@ -105,7 +105,7 @@ async def test_semantic_analysis():
         print()
     
     # Test without embeddings (traditional method)
-    print("\n📊 Testing with Semantic Embeddings DISABLED (Traditional):")
+    print("\n Testing with Semantic Embeddings DISABLED (Traditional):")
     analyzer_traditional = SemanticAnalyzer(
         similarity_threshold=0.3, 
         use_embeddings=False
@@ -123,7 +123,7 @@ async def test_semantic_analysis():
         print()
     
     # Compare specific file similarities
-    print("\n🔍 Detailed Similarity Comparison:")
+    print("\n Detailed Similarity Comparison:")
     if len(signatures_with_embeddings) >= 3:
         # Compare ML/AI files (should be similar)
         ml_file = signatures_with_embeddings[0]  # machine_learning_intro.txt
@@ -150,27 +150,27 @@ async def test_semantic_analysis():
         print(f"  With embeddings: {embedding_sim_ml_recipe:.3f}")
         print(f"  Traditional: {traditional_sim_ml_recipe:.3f}")
         
-        print(f"\n💡 Semantic embeddings should show higher similarity between ML/AI files")
+        print(f"\n Semantic embeddings should show higher similarity between ML/AI files")
         print(f"   and lower similarity between unrelated content (ML/Recipe)")
     
     # Show cache statistics
     final_stats = analyzer_with_embeddings.get_embedding_stats()
-    print(f"\n📈 Final Statistics:")
+    print(f"\n Final Statistics:")
     print(f"Embedding cache size: {final_stats['cache_size']}")
     print(f"Keywords cache size: {final_stats['keywords_cache_size']}")
     
     # Cleanup
     import shutil
     shutil.rmtree("test_semantic_files")
-    print("\n🧹 Cleaned up test files")
+    print("\n Cleaned up test files")
 
 if __name__ == "__main__":
-    print("🚀 Semantic Embedding Test Suite")
+    print(" Semantic Embedding Test Suite")
     print("This script tests the new embedding-based semantic analysis")
     
     try:
         asyncio.run(test_semantic_analysis())
-        print("\n✅ Test completed successfully!")
+        print("\n Test completed successfully!")
     except Exception as e:
         print(f"\n❌ Test failed: {e}")
         import traceback
