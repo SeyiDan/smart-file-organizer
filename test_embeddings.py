@@ -172,7 +172,7 @@ if __name__ == "__main__":
         asyncio.run(test_semantic_analysis())
         print("\n Test completed successfully!")
     except Exception as e:
-        print(f"\n❌ Test failed: {e}")
+        print(f"\n Test failed: {e}")
         import traceback
         traceback.print_exc()
 
